@@ -1,5 +1,8 @@
-let currentBox = {};
-let selectedSupply = {};
+/* =========================================================
+   GLOBAL STATE
+========================================================= */
+let currentBoxId = null;
+let currentBoxName = null;
 
 /* =========================================================
    DEFAULT DATES (10 YEARS BACK)
@@ -7,13 +10,14 @@ let selectedSupply = {};
 function setDefaultDates() {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 10);
+
     const dateStr = d.toISOString().split("T")[0];
     document.getElementById("fromDate").value = dateStr;
     document.getElementById("toDate").value = dateStr;
 }
 
 /* =========================================================
-   LOAD MAIN SALES DATA (REMAINING QTY)
+   LOAD MAIN SALES DATA (PENDING QTY)
 ========================================================= */
 async function loadData() {
     const from = document.getElementById("fromDate").value;
@@ -30,7 +34,7 @@ async function loadData() {
     const table = document.getElementById("salesTable");
     table.innerHTML = "";
 
-    if (data.length === 0) {
+    if (!data || data.length === 0) {
         table.innerHTML = `<tr><td colspan="3">No data found</td></tr>`;
         return;
     }
@@ -43,7 +47,7 @@ async function loadData() {
                 <td 
                     class="qty-cell"
                     title="Ordered: ${r.ordered} | Supplied: ${r.supplied}"
-                    onclick="loadBranchBreakup('${r.boxId}', '${r.boxName}', ${r.remaining})"
+                    onclick="loadBranchBreakup('${r.boxId}', '${r.boxName}')"
                 >
                     ${r.remaining}
                 </td>
@@ -56,10 +60,11 @@ document.getElementById("searchBtn").addEventListener("click", loadData);
 setDefaultDates();
 
 /* =========================================================
-   BRANCH-WISE BREAKUP
+   LOAD BRANCH-WISE BREAKUP
 ========================================================= */
-async function loadBranchBreakup(boxId, boxName, remainingQty) {
-    currentBox = { boxId, boxName, remainingQty };
+async function loadBranchBreakup(boxId, boxName) {
+    currentBoxId = boxId;
+    currentBoxName = boxName;
 
     const from = document.getElementById("fromDate").value;
     const to = document.getElementById("toDate").value;
@@ -72,95 +77,81 @@ async function loadBranchBreakup(boxId, boxName, remainingQty) {
     const table = document.getElementById("branchTable");
     table.innerHTML = "";
 
-    if (data.length === 0) {
-        table.innerHTML = `<tr><td colspan="4">No data found</td></tr>`;
+    if (!data || data.length === 0) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="4" class="muted">No branch data</td>
+            </tr>
+        `;
+        return;
     }
 
-    data.forEach(r => {
+    data.forEach((r, index) => {
         table.innerHTML += `
             <tr>
                 <td>${r.company}</td>
-                <td>${r.branch}</td>
                 <td>${r.qty}</td>
                 <td>
-                    <button 
-                        onclick="openSupplyForm('${r.company}', '${r.branch}')"
-                        ${currentBox.remainingQty === 0 ? "disabled" : ""}
+                    <input
+                        type="number"
+                        min="0"
+                        max="${r.qty}"
+                        id="supplied_${index}"
+                        style="width:80px"
                     >
-                        Enter Supply
+                </td>
+                <td>
+                    <button onclick="saveSupply(
+                        '${currentBoxId}',
+                        '${currentBoxName}',
+                        ${r.branch},
+                        '${r.company}',
+                        'supplied_${index}'
+                    )">
+                        Save
                     </button>
                 </td>
             </tr>
         `;
     });
-
-    document.getElementById("branchModal").classList.remove("hidden");
-}
-
-function closeBranchModal() {
-    document.getElementById("branchModal").classList.add("hidden");
 }
 
 /* =========================================================
-   OPEN WRITE VIEW (SUPPLY ENTRY)
+   SAVE SUPPLIED QUANTITY
 ========================================================= */
-function openSupplyForm(company, branch) {
-    selectedSupply = {
-        company,
-        branch,
-        boxId: currentBox.boxId,
-        boxName: currentBox.boxName,
-        remainingQty: currentBox.remainingQty
-    };
-
-    document.getElementById("sCompany").value = company;
-    document.getElementById("sBranch").value = branch;
-    document.getElementById("sBox").value = currentBox.boxId;
-    document.getElementById("sQty").value = "";
-
-    document.getElementById("supplyModal").classList.remove("hidden");
-}
-
-function closeSupplyModal() {
-    document.getElementById("supplyModal").classList.add("hidden");
-}
-
-/* =========================================================
-   SAVE SUPPLY ENTRY
-========================================================= */
-async function saveSupply() {
-    const qty = parseInt(document.getElementById("sQty").value);
+async function saveSupply(boxId, boxName, branchcode, company, inputId) {
+    const qtyInput = document.getElementById(inputId);
+    const qty = parseInt(qtyInput.value);
 
     if (!qty || qty <= 0) {
-        alert("Enter a valid quantity");
+        alert("Enter valid supplied quantity");
         return;
     }
 
-    if (qty > selectedSupply.remainingQty) {
-        alert("Entered quantity exceeds remaining quantity");
-        return;
-    }
+    try {
+        const res = await fetch("/api/save-supply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                boxId: boxId,
+                boxName: boxName,
+                qty: qty,
+                branchcode: branchcode,
+                company: company
+            })
+        });
 
-    const res = await fetch("/api/save-supply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            boxId: selectedSupply.boxId,
-            boxName: selectedSupply.boxName,
-            qty: qty,
-            branchcode: selectedSupply.branch,
-            company: selectedSupply.company
-        })
-    });
+        const data = await res.json();
 
-    const data = await res.json();
-
-    if (data.success) {
-        alert("Supply saved successfully");
-        closeSupplyModal();
-        closeBranchModal();
-        loadData(); // 🔄 refresh main table
-    } else {
-        alert(data.msg || "Error saving supply");
+        if (data.success) {
+            alert("Saved successfully");
+            qtyInput.value = "";
+            loadData(); // refresh pending qty
+        } else {
+            alert("Save failed");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Server error while saving");
     }
 }

@@ -141,71 +141,72 @@ def branch_breakup():
     ])
 
 # =========================================================
-# 4️⃣ SAVE SUPPLIER SUPPLY (WRITE VIEW)
-# =========================================================
 @dashboard_bp.route("/api/save-supply", methods=["POST"])
 def save_supply():
     if "supplier_code" not in session:
         return jsonify({"success": False, "msg": "Unauthorized"})
 
-    data = request.json
-
     try:
-        boxcd = data["boxId"]
-        itemname = data["boxName"]
-        qty = int(data["qty"])
-        branchcode = data["branchcode"]
-        company = data["company"]
-    except:
-        return jsonify({"success": False, "msg": "Invalid data"})
+        data = request.get_json()
+        print("📥 SAVE PAYLOAD:", data)
 
-    if qty <= 0:
-        return jsonify({"success": False, "msg": "Quantity must be greater than zero"})
+        boxcd = int(data.get("boxId"))
+        itemname = data.get("boxName")
+        qty = int(data.get("qty"))
 
-    today = datetime.now()
-    date_ = today.strftime("%d/%m/%Y")
-    daten = int(today.strftime("%Y%m%d"))
-    trnflag = "P"
+        # ✅ SAFELY HANDLE NULL BRANCHCODE
+        branchcode = data.get("branchcode")
+        branchcode = int(branchcode) if branchcode not in (None, "", "null") else 0
 
-    # Stock_in logic (safe default)
-    stock_in = qty
+        company = data.get("company")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+        from datetime import datetime
+        today = datetime.now()
 
-    # Generate SRNO safely
-    cursor.execute("SELECT ISNULL(MAX(srno), 0) + 1 FROM stock")
-    srno = cursor.fetchone()[0]
+        date_ = today.strftime("%d/%m/%Y")
+        daten = int(today.strftime("%Y%m%d"))
 
-    cursor.execute("""
-        INSERT INTO stock
-        (
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 🔢 Generate SRNO
+        cursor.execute("SELECT ISNULL(MAX(srno), 0) + 1 FROM stock")
+        srno = cursor.fetchone()[0]
+
+        cursor.execute("""
+            INSERT INTO stock
+            (
+                boxcd,
+                ITEMNAME,
+                qty,
+                date_,
+                daten,
+                stock_in,
+                branchcode,
+                company,
+                srno,
+                trnflag
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'P')
+        """, (
             boxcd,
             itemname,
             qty,
             date_,
             daten,
-            stock_in,
+            qty,
             branchcode,
             company,
-            srno,
-            trnflag
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        boxcd,
-        itemname,
-        qty,
-        date_,
-        daten,
-        stock_in,
-        branchcode,
-        company,
-        srno,
-        trnflag
-    ))
+            srno
+        ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
-    return jsonify({"success": True})
+        print("✅ STOCK INSERTED:", boxcd, qty, branchcode, company)
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        print("❌ SAVE ERROR:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
