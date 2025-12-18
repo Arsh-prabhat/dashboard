@@ -5,50 +5,37 @@ let currentBoxId = null;
 let currentBoxName = null;
 
 /* =========================================================
-   DEFAULT DATES (10 YEARS BACK)
+   FIXED DATE (2015 – system limitation)
 ========================================================= */
 function setDefaultDates() {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - 10);
-
-    const dateStr = d.toISOString().split("T")[0];
-    document.getElementById("fromDate").value = dateStr;
-    document.getElementById("toDate").value = dateStr;
+    fromDate.value = "2015-12-18";
+    toDate.value   = "2015-12-31";
 }
 
 /* =========================================================
    LOAD MAIN SALES DATA (PENDING QTY)
 ========================================================= */
 async function loadData() {
-    const from = document.getElementById("fromDate").value;
-    const to = document.getElementById("toDate").value;
-
-    if (!from || !to) {
-        alert("Please select both dates");
-        return;
-    }
-
-    const res = await fetch(`/api/sales?from=${from}&to=${to}`);
+    const res = await fetch(
+        `/api/sales?from=${fromDate.value}&to=${toDate.value}`
+    );
     const data = await res.json();
 
-    const table = document.getElementById("salesTable");
-    table.innerHTML = "";
+    salesTable.innerHTML = "";
 
-    if (!data || data.length === 0) {
-        table.innerHTML = `<tr><td colspan="3">No data found</td></tr>`;
+    if (!data.length) {
+        salesTable.innerHTML = `<tr><td colspan="3">No data</td></tr>`;
         return;
     }
 
     data.forEach(r => {
-        table.innerHTML += `
+        salesTable.innerHTML += `
             <tr>
                 <td>${r.boxId}</td>
                 <td>${r.boxName}</td>
-                <td 
-                    class="qty-cell"
+                <td class="qty-cell"
                     title="Ordered: ${r.ordered} | Supplied: ${r.supplied}"
-                    onclick="loadBranchBreakup('${r.boxId}', '${r.boxName}')"
-                >
+                    onclick="loadBranchBreakup('${r.boxId}', '${r.boxName}')">
                     ${r.remaining}
                 </td>
             </tr>
@@ -56,57 +43,43 @@ async function loadData() {
     });
 }
 
-document.getElementById("searchBtn").addEventListener("click", loadData);
-setDefaultDates();
-
 /* =========================================================
-   LOAD BRANCH-WISE BREAKUP
+   LOAD COMPANY-WISE BREAKUP (NO BRANCH)
 ========================================================= */
 async function loadBranchBreakup(boxId, boxName) {
     currentBoxId = boxId;
     currentBoxName = boxName;
 
-    const from = document.getElementById("fromDate").value;
-    const to = document.getElementById("toDate").value;
-
     const res = await fetch(
-        `/api/branch-breakup?boxId=${boxId}&from=${from}&to=${to}`
+        `/api/branch-breakup?boxId=${boxId}&from=${fromDate.value}&to=${toDate.value}`
     );
     const data = await res.json();
 
-    const table = document.getElementById("branchTable");
-    table.innerHTML = "";
+    branchTable.innerHTML = "";
 
-    if (!data || data.length === 0) {
-        table.innerHTML = `
-            <tr>
-                <td colspan="4" class="muted">No branch data</td>
-            </tr>
-        `;
+    if (!data.length) {
+        branchTable.innerHTML = `<tr><td colspan="4">No data</td></tr>`;
         return;
     }
 
-    data.forEach((r, index) => {
-        table.innerHTML += `
+    data.forEach((r, i) => {
+        branchTable.innerHTML += `
             <tr>
                 <td>${r.company}</td>
                 <td>${r.qty}</td>
                 <td>
-                    <input
-                        type="number"
-                        min="0"
-                        max="${r.qty}"
-                        id="supplied_${index}"
-                        style="width:80px"
-                    >
+                    <input type="number"
+                           min="0"
+                           max="${r.qty}"
+                           id="sup_${i}"
+                           style="width:70px">
                 </td>
                 <td>
                     <button onclick="saveSupply(
-                        '${currentBoxId}',
-                        '${currentBoxName}',
-                        ${r.branch},
+                        '${boxId}',
+                        '${boxName}',
                         '${r.company}',
-                        'supplied_${index}'
+                        'sup_${i}'
                     )">
                         Save
                     </button>
@@ -117,41 +90,43 @@ async function loadBranchBreakup(boxId, boxName) {
 }
 
 /* =========================================================
-   SAVE SUPPLIED QUANTITY
+   SAVE SUPPLIED QTY
 ========================================================= */
-async function saveSupply(boxId, boxName, branchcode, company, inputId) {
-    const qtyInput = document.getElementById(inputId);
-    const qty = parseInt(qtyInput.value);
+async function saveSupply(boxId, boxName, company, inputId) {
+    const qty = parseInt(document.getElementById(inputId).value);
 
     if (!qty || qty <= 0) {
-        alert("Enter valid supplied quantity");
+        alert("Enter valid quantity");
         return;
     }
 
-    try {
-        const res = await fetch("/api/save-supply", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                boxId: boxId,
-                boxName: boxName,
-                qty: qty,
-                branchcode: branchcode,
-                company: company
-            })
-        });
+    const res = await fetch("/api/save-supply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            boxId,
+            boxName,
+            qty,
+            company,
+            supplyDate: fromDate.value
+        })
+    });
 
-        const data = await res.json();
+    const data = await res.json();
 
-        if (data.success) {
-            alert("Saved successfully");
-            qtyInput.value = "";
-            loadData(); // refresh pending qty
-        } else {
-            alert("Save failed");
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Server error while saving");
+    if (data.success) {
+        alert("Saved successfully");
+
+        // 🔁 refresh both tables
+        loadData();
+        loadBranchBreakup(currentBoxId, currentBoxName);
+    } else {
+        alert("Save failed");
     }
 }
+
+/* =========================================================
+   INIT
+========================================================= */
+searchBtn.onclick = loadData;
+setDefaultDates();
