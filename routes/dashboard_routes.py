@@ -5,35 +5,27 @@ from datetime import datetime
 dashboard_bp = Blueprint("dashboard", __name__)
 
 # =========================================================
-# 1️⃣ DASHBOARD PAGE
+# DASHBOARD PAGE
 # =========================================================
 @dashboard_bp.route("/dashboard")
 def dashboard():
     if "supplier_code" not in session:
         return redirect("/")
-
     return render_template(
         "dashboard.html",
         supplier_name=session.get("supplier_name")
     )
 
 # =========================================================
-# 2️⃣ MAIN SALES API (REMAINING QTY)
+# MAIN SALES (ORDERED / SUPPLIED / REMAINING)
 # =========================================================
 @dashboard_bp.route("/api/sales")
 def sales_data():
     if "supplier_code" not in session:
         return jsonify([])
 
-    from_date = request.args.get("from")
-    to_date = request.args.get("to")
-
-    if not from_date or not to_date:
-        return jsonify([])
-
-    from_date = from_date.replace("-", "")
-    to_date = to_date.replace("-", "")
-
+    from_daten = int(request.args["from"].replace("-", ""))
+    to_daten   = int(request.args["to"].replace("-", ""))
     supplier_code = session["supplier_code"]
 
     conn = get_db_connection()
@@ -41,92 +33,91 @@ def sales_data():
 
     cursor.execute("""
         SELECT 
-            g.code AS box_id,
-            g.code2 AS box_name,
-
+            g.code,
+            g.code2,
             SUM(s.qty) AS ordered_qty,
 
             ISNULL((
                 SELECT SUM(st.qty)
                 FROM stock st
-                WHERE 
-                    st.boxcd = g.code
-                    AND st.daten BETWEEN ? AND ?
-                    AND st.trnflag = 'P'
-            ), 0) AS supplied_qty
+                WHERE st.boxcd = g.code
+                  AND st.trnflag = 'P'
+                  AND st.daten BETWEEN ? AND ?
+            ),0) AS supplied_qty
 
         FROM group3 g
         JOIN stocktrn s ON g.code = s.group2
-        WHERE 
-            s.charity BETWEEN ? AND ?
-            AND s.qty <> 0
-            AND s.mrp = 0
-            AND s.mrp1 = 1
-            AND g.custid = ?
+        WHERE s.charity BETWEEN ? AND ?
+          AND s.qty <> 0
+          AND s.mrp = 0
+          AND s.mrp1 = 1
+          AND g.custid = ?
         GROUP BY g.code, g.code2
         ORDER BY g.code
-    """, (from_date, to_date, from_date, to_date, supplier_code))
+    """, (from_daten, to_daten, from_daten, to_daten, supplier_code))
 
     rows = cursor.fetchall()
     conn.close()
 
-    result = []
-
-    for r in rows:
-        ordered = r[2]
-        supplied = r[3]
-        remaining = max(ordered - supplied, 0)
-
-        result.append({
+    return jsonify([
+        {
             "boxId": r[0],
             "boxName": r[1],
-            "ordered": ordered,
-            "supplied": supplied,
-            "remaining": remaining
-        })
-
-    return jsonify(result)
+            "ordered": int(r[2]),
+            "supplied": int(r[3]),
+            "remaining": max(int(r[2]) - int(r[3]), 0)
+        }
+        for r in rows
+    ])
 
 # =========================================================
-# 3️⃣ BRANCH-WISE BREAKUP (ORDERED QTY)
+# COMPANY-WISE REMAINING QTY (NO BRANCH)
 # =========================================================
 @dashboard_bp.route("/api/branch-breakup")
 def branch_breakup():
     if "supplier_code" not in session:
         return jsonify([])
 
-    box_id = request.args.get("boxId")
-    from_date = request.args.get("from")
-    to_date = request.args.get("to")
-
-    if not box_id or not from_date or not to_date:
-        return jsonify([])
-
-    from_date = from_date.replace("-", "")
-    to_date = to_date.replace("-", "")
-
+    box_id = int(request.args["boxId"])
+    from_daten = int(request.args["from"].replace("-", ""))
+    to_daten   = int(request.args["to"].replace("-", ""))
     supplier_code = session["supplier_code"]
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT 
-            s.company,
-            s.branchcode,
-            SUM(s.qty) AS qty
-        FROM stocktrn s
-        JOIN group3 g ON g.code = s.group2
-        WHERE 
-            s.group2 = ?
-            AND s.charity BETWEEN ? AND ?
-            AND s.qty <> 0
-            AND s.mrp = 0
-            AND s.mrp1 = 1
-            AND g.custid = ?
-        GROUP BY s.company, s.branchcode
-        ORDER BY s.company, s.branchcode
-    """, (box_id, from_date, to_date, supplier_code))
+        SELECT *
+        FROM (
+            SELECT
+                s.company,
+                SUM(s.qty)
+                -
+                ISNULL((
+                    SELECT SUM(st.qty)
+                    FROM stock st
+                    WHERE st.boxcd = s.group2
+                      AND st.company = s.company
+                      AND st.trnflag = 'P'
+                      AND st.daten BETWEEN ? AND ?
+                ),0) AS remaining_qty
+
+            FROM stocktrn s
+            JOIN group3 g ON g.code = s.group2
+            WHERE s.group2 = ?
+              AND s.charity BETWEEN ? AND ?
+              AND s.qty <> 0
+              AND s.mrp = 0
+              AND s.mrp1 = 1
+              AND g.custid = ?
+            GROUP BY s.company, s.group2
+        ) x
+        WHERE x.remaining_qty > 0
+        ORDER BY x.company
+    """, (
+        from_daten, to_daten,
+        box_id, from_daten, to_daten, supplier_code
+    ))
 
     rows = cursor.fetchall()
     conn.close()
@@ -134,75 +125,46 @@ def branch_breakup():
     return jsonify([
         {
             "company": r[0],
-            "branch": r[1],
-            "qty": r[2]
+            "qty": int(r[1])
         }
         for r in rows
     ])
 
 # =========================================================
-# 4️⃣ SAVE SUPPLIER SUPPLY (WRITE VIEW)
+# SAVE SUPPLY (STOCK INSERT)
 # =========================================================
 @dashboard_bp.route("/api/save-supply", methods=["POST"])
 def save_supply():
     if "supplier_code" not in session:
-        return jsonify({"success": False, "msg": "Unauthorized"})
+        return jsonify({"success": False})
 
     data = request.json
 
-    try:
-        boxcd = data["boxId"]
-        itemname = data["boxName"]
-        qty = int(data["qty"])
-        branchcode = data["branchcode"]
-        company = data["company"]
-    except:
-        return jsonify({"success": False, "msg": "Invalid data"})
+    boxcd = int(data["boxId"])
+    itemname = data["boxName"]
+    qty = int(data["qty"])
+    company = data["company"]
 
-    if qty <= 0:
-        return jsonify({"success": False, "msg": "Quantity must be greater than zero"})
-
-    today = datetime.now()
-    date_ = today.strftime("%d/%m/%Y")
-    daten = int(today.strftime("%Y%m%d"))
-    trnflag = "P"
-
-    # Stock_in logic (safe default)
-    stock_in = qty
+    supply_date = data["supplyDate"]
+    daten = int(supply_date.replace("-", ""))
+    date_ = datetime.strptime(
+        supply_date, "%Y-%m-%d"
+    ).strftime("%d/%m/%Y")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Generate SRNO safely
-    cursor.execute("SELECT ISNULL(MAX(srno), 0) + 1 FROM stock")
+    cursor.execute("SELECT ISNULL(MAX(srno),0)+1 FROM stock")
     srno = cursor.fetchone()[0]
 
     cursor.execute("""
         INSERT INTO stock
-        (
-            boxcd,
-            itemname,
-            qty,
-            date_,
-            daten,
-            stock_in,
-            branchcode,
-            company,
-            srno,
-            trnflag
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (boxcd, ITEMNAME, qty, date_, daten,
+         stock_in, company, srno, trnflag)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'P')
     """, (
-        boxcd,
-        itemname,
-        qty,
-        date_,
-        daten,
-        stock_in,
-        branchcode,
-        company,
-        srno,
-        trnflag
+        boxcd, itemname, qty, date_, daten,
+        qty, company, srno
     ))
 
     conn.commit()
