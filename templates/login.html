@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Supplier Login</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-body">
+
+    <div class="login-card">
+        <h2>Supplier Dashboard</h2>
+        <p>Please enter your supplier code</p>
+
+        <!-- ✅ FORM is REQUIRED for Enter key -->
+        <form id="loginForm">
+            <input
+                type="text"
+                id="supplierCode"
+                placeholder="Supplier Code"
+                autocomplete="off"
+                required
+            >
+
+            <button type="submit">Enter</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById("loginForm").addEventListener("submit", login);
+
+        async function login(e) {
+            e.preventDefault(); // 🔴 stop page reload
+
+            const code = document.getElementById("supplierCode").value.trim();
+
+            if (!code) {
+                alert("Please enter supplier code");
+                return;
+            }
+
+            try {
+                const res = await fetch("/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ supplier_code: code })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert("Login successful");
+                    window.location.href = "/dashboard";
+                } else {
+                    alert("User not found");
+                }
+
+            } catch (err) {
+                alert("Server error. Please try again.");
+                console.error(err);
+            }
+        }
+    </script>
+
+</body>
+</html>

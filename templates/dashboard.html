@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div class="container">
+
+    <!-- ✅ Welcome message -->
+    <h2>Welcome, {{ supplier_name }}</h2>
+
+    <!-- 🔍 Filters -->
+    <div class="filters">
+        <div>
+            <label>From Date</label>
+            <input type="date" id="fromDate">
+        </div>
+
+        <div>
+            <label>To Date</label>
+            <input type="date" id="toDate">
+        </div>
+
+        <button id="searchBtn">Search</button>
+    </div>
+
+    <!-- 📦 MAIN SALES TABLE -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Box ID</th>
+                <th>Box Name</th>
+                <th>Qty</th>
+            </tr>
+        </thead>
+        <tbody id="salesTable">
+            <!-- JS injects rows -->
+        </tbody>
+    </table>
+
+</div>
+
+<!-- ================= BRANCH BREAKUP MODAL ================= -->
+
+<div id="branchModal" class="modal hidden">
+    <div class="modal-content">
+        <h3>Branch-wise Quantity</h3>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Branch</th>
+                    <th>Qty</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="branchTable"></tbody>
+        </table>
+
+        <br>
+        <button onclick="closeBranchModal()">Close</button>
+    </div>
+</div>
+
+<!-- ================= SUPPLY ENTRY (WRITE VIEW) MODAL ================= -->
+
+<div id="supplyModal" class="modal hidden">
+    <div class="modal-content">
+        <h3>Enter Supplied Quantity</h3>
+
+        <div class="form-group">
+            <label>Company</label>
+            <input type="text" id="sCompany" readonly>
+        </div>
+
+        <div class="form-group">
+            <label>Branch</label>
+            <input type="text" id="sBranch" readonly>
+        </div>
+
+        <div class="form-group">
+            <label>Box Code</label>
+            <input type="text" id="sBox" readonly>
+        </div>
+
+        <div class="form-group">
+            <label>Supplied Quantity</label>
+            <input type="number" id="sQty" min="1">
+        </div>
+
+        <br>
+
+        <button onclick="saveSupply()">Save</button>
+        <button onclick="closeSupplyModal()">Cancel</button>
+    </div>
+</div>
+
+<script src="/static/js/script.js"></script>
+</body>
+</html>
