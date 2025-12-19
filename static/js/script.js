@@ -1,41 +1,46 @@
-/* =========================================================
-   GLOBAL STATE
-========================================================= */
 let currentBoxId = null;
 let currentBoxName = null;
+let godowns = [];
 
-/* =========================================================
-   FIXED DATE (2015 – system limitation)
-========================================================= */
+/* ================= DEFAULT DATE ================= */
 function setDefaultDates() {
-    fromDate.value = "2015-12-18";
-    toDate.value   = "2015-12-31";
+    document.getElementById("fromDate").value = "2015-12-18";
+    document.getElementById("toDate").value = "2015-12-31";
 }
 
-/* =========================================================
-   LOAD MAIN SALES DATA (PENDING QTY)
-========================================================= */
+/* ================= LOAD GODOWNS ================= */
+async function loadGodowns() {
+    const res = await fetch("/api/godowns");
+    godowns = await res.json();
+}
+
+/* ================= LOAD MAIN TABLE ================= */
 async function loadData() {
-    const res = await fetch(
-        `/api/sales?from=${fromDate.value}&to=${toDate.value}`
-    );
+    const from = fromDate.value;
+    const to = toDate.value;
+
+    const res = await fetch(`/api/sales?from=${from}&to=${to}`);
     const data = await res.json();
 
-    salesTable.innerHTML = "";
+    const table = document.getElementById("salesTable");
+    table.innerHTML = "";
 
-    if (!data.length) {
-        salesTable.innerHTML = `<tr><td colspan="3">No data</td></tr>`;
+    if (data.length === 0) {
+        table.innerHTML = `<tr><td colspan="4">No data found</td></tr>`;
+        document.getElementById("branchTable").innerHTML = `
+            <tr><td colspan="5">Select a box to view details</td></tr>
+        `;
         return;
     }
 
     data.forEach(r => {
-        salesTable.innerHTML += `
+        table.innerHTML += `
             <tr>
                 <td>${r.boxId}</td>
                 <td>${r.boxName}</td>
+                <td>${r.ordered}</td>
                 <td class="qty-cell"
-                    title="Ordered: ${r.ordered} | Supplied: ${r.supplied}"
-                    onclick="loadBranchBreakup('${r.boxId}', '${r.boxName}')">
+                    onclick="loadBranchBreakup('${r.boxId}','${r.boxName}')">
                     ${r.remaining}
                 </td>
             </tr>
@@ -43,43 +48,59 @@ async function loadData() {
     });
 }
 
-/* =========================================================
-   LOAD COMPANY-WISE BREAKUP (NO BRANCH)
-========================================================= */
+/* ================= BRANCH TABLE ================= */
 async function loadBranchBreakup(boxId, boxName) {
     currentBoxId = boxId;
     currentBoxName = boxName;
 
+    const from = fromDate.value;
+    const to = toDate.value;
+
     const res = await fetch(
-        `/api/branch-breakup?boxId=${boxId}&from=${fromDate.value}&to=${toDate.value}`
+        `/api/branch-breakup?boxId=${boxId}&from=${from}&to=${to}`
     );
     const data = await res.json();
 
-    branchTable.innerHTML = "";
+    const table = document.getElementById("branchTable");
+    table.innerHTML = "";
 
-    if (!data.length) {
-        branchTable.innerHTML = `<tr><td colspan="4">No data</td></tr>`;
+    if (data.length === 0) {
+        table.innerHTML = `<tr><td colspan="5">No pending quantity</td></tr>`;
         return;
     }
 
-    data.forEach((r, i) => {
-        branchTable.innerHTML += `
+    data.forEach((r, index) => {
+        let options = godowns.map(g =>
+            `<option value="${g}">${g}</option>`
+        ).join("");
+
+        table.innerHTML += `
             <tr>
                 <td>${r.company}</td>
+
+                <td>
+                    <select id="godown_${index}">
+                        ${options}
+                    </select>
+                </td>
+
                 <td>${r.qty}</td>
+
                 <td>
                     <input type="number"
-                           min="0"
+                           min="1"
                            max="${r.qty}"
-                           id="sup_${i}"
-                           style="width:70px">
+                           id="supplied_${index}"
+                           style="width:80px">
                 </td>
+
                 <td>
                     <button onclick="saveSupply(
-                        '${boxId}',
-                        '${boxName}',
+                        '${currentBoxId}',
+                        '${currentBoxName}',
                         '${r.company}',
-                        'sup_${i}'
+                        'supplied_${index}',
+                        'godown_${index}'
                     )">
                         Save
                     </button>
@@ -89,11 +110,10 @@ async function loadBranchBreakup(boxId, boxName) {
     });
 }
 
-/* =========================================================
-   SAVE SUPPLIED QTY
-========================================================= */
-async function saveSupply(boxId, boxName, company, inputId) {
-    const qty = parseInt(document.getElementById(inputId).value);
+/* ================= SAVE ================= */
+async function saveSupply(boxId, boxName, company, qtyId, godownId) {
+    const qty = parseInt(document.getElementById(qtyId).value);
+    const godown = document.getElementById(godownId).value;
 
     if (!qty || qty <= 0) {
         alert("Enter valid quantity");
@@ -108,7 +128,7 @@ async function saveSupply(boxId, boxName, company, inputId) {
             boxName,
             qty,
             company,
-            supplyDate: fromDate.value
+            godown
         })
     });
 
@@ -116,17 +136,17 @@ async function saveSupply(boxId, boxName, company, inputId) {
 
     if (data.success) {
         alert("Saved successfully");
-
-        // 🔁 refresh both tables
         loadData();
-        loadBranchBreakup(currentBoxId, currentBoxName);
+        loadBranchBreakup(boxId, boxName);
     } else {
         alert("Save failed");
     }
 }
 
-/* =========================================================
-   INIT
-========================================================= */
-searchBtn.onclick = loadData;
-setDefaultDates();
+/* ================= INIT ================= */
+document.addEventListener("DOMContentLoaded", async () => {
+    setDefaultDates();
+    await loadGodowns();
+    loadData();
+    document.getElementById("searchBtn").addEventListener("click", loadData);
+});

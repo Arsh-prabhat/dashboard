@@ -11,7 +11,6 @@
         <h2>Supplier Dashboard</h2>
         <p>Please enter your supplier code</p>
 
-        <!-- ✅ FORM is REQUIRED for Enter key -->
         <form id="loginForm">
             <input
                 type="text"
@@ -26,12 +25,17 @@
     </div>
 
     <script>
-        document.getElementById("loginForm").addEventListener("submit", login);
+        document
+            .getElementById("loginForm")
+            .addEventListener("submit", handleLogin);
 
-        async function login(e) {
-            e.preventDefault(); // 🔴 stop page reload
+        async function handleLogin(e) {
+            e.preventDefault();
 
-            const code = document.getElementById("supplierCode").value.trim();
+            const code = document
+                .getElementById("supplierCode")
+                .value
+                .trim();
 
             if (!code) {
                 alert("Please enter supplier code");
@@ -47,16 +51,17 @@
 
                 const data = await res.json();
 
-                if (data.success) {
-                    alert("Login successful");
-                    window.location.href = "/dashboard";
-                } else {
-                    alert("User not found");
+                if (!data.success) {
+                    alert("Invalid supplier code");
+                    return;
                 }
 
+                // ✅ success → direct redirect (NO popup)
+                window.location.href = "/dashboard";
+
             } catch (err) {
-                alert("Server error. Please try again.");
                 console.error(err);
+                alert("Server error. Please try again.");
             }
         }
     </script>
