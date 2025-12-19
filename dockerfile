@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+FROM python:3.9-slim-buster
+
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -22,7 +23,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://package
 
 # Install MS ODBC Driver 18
 RUN apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
