@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies for pyodbc + SQL Server
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
@@ -8,28 +8,37 @@ RUN apt-get update && apt-get install -y \
     unixodbc-dev \
     gcc \
     g++ \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Microsoft ODBC Driver 18
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql18
+# Add Microsoft package signing key
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor \
+    | tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+
+# Add Microsoft SQL Server repo
+RUN echo "deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
+    > /etc/apt/sources.list.d/mssql-release.list
+
+# Install MS ODBC Driver 18
+RUN apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements
+# Copy requirements first (better layer caching)
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
+# Copy application code
 COPY . .
 
 # Expose port
 EXPOSE 8080
 
-# Run app
+# Run app with Gunicorn
 CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]

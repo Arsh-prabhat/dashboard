@@ -7,10 +7,9 @@ def get_db_connection():
         "DATABASE=posbhaji;"
         "UID=sa;"
         "PWD=485526365;"
-        "Encrypt=no;"
+        "Encrypt=yes;"
         "TrustServerCertificate=yes;"
         "Connection Timeout=30;"
-        "Network Library=DBMSSOCN;"
     )
 
     return pyodbc.connect(conn_str)
