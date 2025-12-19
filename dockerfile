@@ -1,30 +1,35 @@
 FROM python:3.11-slim
 
-# Install system packages
+# Install system dependencies for pyodbc + SQL Server
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
     unixodbc \
-    unixodbc-dev
+    unixodbc-dev \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Microsoft ODBC Driver 18 for SQL Server
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/12/prod.list \
-    > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql18
+# Install Microsoft ODBC Driver 18
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18
 
-# Set work directory
+# Set working directory
 WORKDIR /app
 
-# Install Python dependencies
+# Copy requirements
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# Copy app code
 COPY . .
 
-# Expose Flask port
-EXPOSE 5000
+# Expose port
+EXPOSE 8080
 
-# Run Flask app
-CMD ["python", "app.py"]
+# Run app
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
