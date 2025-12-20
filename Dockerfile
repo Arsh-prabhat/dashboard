@@ -22,7 +22,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://package
 
 # Install MS ODBC Driver 17
 RUN apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
